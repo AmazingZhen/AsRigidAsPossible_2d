@@ -159,7 +159,7 @@ void Render::generateSquareMesh()
 	vertices.clear();
 	indices.clear();
 
-	const unsigned int nRowLen = 5;
+	const unsigned int nRowLen = 4;
 
 	float fYStep = 2.0f / (float)(nRowLen - 1);
 	float fXStep = 2.0f / (float)(nRowLen - 1);
