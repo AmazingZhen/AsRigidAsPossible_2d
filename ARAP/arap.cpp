@@ -1,17 +1,81 @@
 #include "arap.h"
 
 #include <iostream>
-#include <map>
-#include <tuple>
+
+ARAP::ARAP() : mode(similarity_scale)
+{
+}
+
+bool test = false;
 
 void ARAP::registration(const std::vector<float>& vertices, const std::vector<unsigned int>& indices)
 {
-	registration_similarity(vertices, indices);
-	//registration_base(vertices, indices);
+	switch (mode)
+	{
+	case base:
+		registration_base(vertices, indices);
+		break;
+	case similarity:
+		registration_similarity(vertices, indices);
+		break;
+	case similarity_scale:
+		registration_similarity_scale(vertices, indices);
+		break;
+	default:
+		registration_base(vertices, indices);
+		break;
+	}
 }
 
 /*
-	Min ||(v1' - v0') - (v1 - v0)||
+	Min ||v' - v||
+	Add constraints for select vetices.
+*/
+void ARAP::compilation(const std::unordered_set<unsigned int> vSelected)
+{
+	A1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, A1_error.cols());
+	b1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, 1);
+
+	int curRow = 0;
+	w = 100.f;  // w increases, constraints increases.
+	for (auto iter = vSelected.begin(); iter != vSelected.end(); iter++) {
+		int index = *iter;
+		A1_constraint(curRow, index * 2) = w;
+		A1_constraint(curRow + 1, index * 2 + 1) = w;
+		curRow += 2;
+
+		//printf("choose index: %d\n", index);
+	}
+
+	//printf("A1_constraint:\n");
+	//std::cout << A1_constraint << std::endl;
+}
+
+void ARAP::solve(std::vector<float>& vertices, const std::vector<unsigned int>& indices, const std::unordered_set<unsigned int> vSelected)
+{
+	if (vSelected.size() == 0) {
+		return;
+	}
+
+	switch (mode)
+	{
+	case base:
+		solve_base(vertices, vSelected);
+		break;
+	case similarity:
+		solve_similarity(vertices, vSelected);
+		break;
+	case similarity_scale:
+		solve_similarity_scale(vertices, indices, vSelected);
+		break;
+	default:
+		solve_base(vertices, vSelected);
+		break;
+	}
+}
+
+/*
+Min ||(v1' - v0') - (v1 - v0)||
 */
 void ARAP::registration_base(const std::vector<float>& vertices, const std::vector<unsigned int> &indices)
 {
@@ -34,7 +98,7 @@ void ARAP::registration_base(const std::vector<float>& vertices, const std::vect
 			A1_error(curRow + 1, vStart * 2 + 1) = -1;
 			A1_error(curRow + 1, vEnd * 2 + 1) = 1;
 			b1_error(curRow + 1, 0) = vertices[vEnd * 3 + 1] - vertices[vStart * 3 + 1];
-			
+
 			curRow += 2;
 		}
 	}
@@ -42,8 +106,8 @@ void ARAP::registration_base(const std::vector<float>& vertices, const std::vect
 }
 
 /*
-	Min ||(v1' - v0') - R * (v1 - v0)||
-	R is 2d rotation matrix
+Min ||(v1' - v0') - R * (v1 - v0)||
+R is 2d rotation matrix
 */
 void ARAP::registration_similarity(const std::vector<float>& vertices, const std::vector<unsigned int> &indices)
 {
@@ -52,7 +116,6 @@ void ARAP::registration_similarity(const std::vector<float>& vertices, const std
 	A1_error = Eigen::MatrixXf::Zero(row, col);
 	b1_error = Eigen::MatrixXf::Zero(row, 1);
 
-	std::map<std::pair<unsigned int, unsigned int>, std::vector<unsigned int>> edgeTableForTriangleIndex;
 	for (int i = 0; i < indices.size(); i += 3) {
 		for (int j = i; j < i + 3; j++) {
 			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
@@ -92,25 +155,25 @@ void ARAP::registration_similarity(const std::vector<float>& vertices, const std
 				vx[3] = vertices[vIndices[3] * 3];	vy[3] = vertices[vIndices[3] * 3 + 1];
 
 				/*
-					This part of the paper is wrong(maybe).
-					I recalculate this part myself, using {ck, sk} = G * {ej, el, er}
+				This part of the paper is wrong(maybe).
+				I recalculate this part myself, using {ck, sk} = G * {ej, el, er}
 				*/
 
 				Eigen::MatrixXf Gk = Eigen::MatrixXf::Zero(6, 2);
 
-				Gk(0, 0) = vx[1] - vx[0];	Gk(0, 1) =	vy[1] - vy[0];
-				Gk(1, 0) = vy[1] - vy[0];	Gk(2, 1) =	-(vx[1] - vx[0]);
-				Gk(2, 0) = vx[2] - vx[0];	Gk(2, 1) =	vy[2] - vy[0];
-				Gk(3, 0) = vy[2] - vy[0];	Gk(3, 1) =	-(vx[2] - vx[0]);
-				Gk(4, 0) = vx[3] - vx[0];	Gk(4, 1) =	vy[3] - vy[0];
-				Gk(5, 0) = vy[3] - vy[0];	Gk(5, 1) =	-(vx[3] - vx[0]);
+				Gk(0, 0) = vx[1] - vx[0];	Gk(0, 1) = vy[1] - vy[0];
+				Gk(1, 0) = vy[1] - vy[0];	Gk(2, 1) = -(vx[1] - vx[0]);
+				Gk(2, 0) = vx[2] - vx[0];	Gk(2, 1) = vy[2] - vy[0];
+				Gk(3, 0) = vy[2] - vy[0];	Gk(3, 1) = -(vx[2] - vx[0]);
+				Gk(4, 0) = vx[3] - vx[0];	Gk(4, 1) = vy[3] - vy[0];
+				Gk(5, 0) = vy[3] - vy[0];	Gk(5, 1) = -(vx[3] - vx[0]);
 
 				Eigen::MatrixXf G = (Gk.transpose() * Gk).completeOrthogonalDecomposition().pseudoInverse() * Gk.transpose();  // Size of H_ is (2, 6)
 
-				/*
-					Here, we come back to the paper.
-					{ck, sk} = G * {ej, el, er} ==> {ck, sk} = H * {vi, vj, vl, vr}
-				*/
+																															   /*
+																															   Here, we come back to the paper.
+																															   {ck, sk} = G * {ej, el, er} ==> {ck, sk} = H * {vi, vj, vl, vr}
+																															   */
 
 				Eigen::MatrixXf H = Eigen::MatrixXf::Zero(2, 8);
 
@@ -144,24 +207,24 @@ void ARAP::registration_similarity(const std::vector<float>& vertices, const std
 				H(1, 1) += -1;	H(1, 3) += 1;
 
 				// x part
-				A1_error(curRow, vIndices[0] * 2		)	= H(0, 0);
-				A1_error(curRow, vIndices[0] * 2 + 1	)	= H(0, 1);
-				A1_error(curRow, vIndices[1] * 2		)	= H(0, 2);
-				A1_error(curRow, vIndices[1] * 2 + 1	)	= H(0, 3);
-				A1_error(curRow, vIndices[2] * 2		)	= H(0, 4);
-				A1_error(curRow, vIndices[2] * 2 + 1	)	= H(0, 5);
-				A1_error(curRow, vIndices[3] * 2		)	= H(0, 6);
-				A1_error(curRow, vIndices[3] * 2 + 1	)	= H(0, 7);
+				A1_error(curRow, vIndices[0] * 2) = H(0, 0);
+				A1_error(curRow, vIndices[0] * 2 + 1) = H(0, 1);
+				A1_error(curRow, vIndices[1] * 2) = H(0, 2);
+				A1_error(curRow, vIndices[1] * 2 + 1) = H(0, 3);
+				A1_error(curRow, vIndices[2] * 2) = H(0, 4);
+				A1_error(curRow, vIndices[2] * 2 + 1) = H(0, 5);
+				A1_error(curRow, vIndices[3] * 2) = H(0, 6);
+				A1_error(curRow, vIndices[3] * 2 + 1) = H(0, 7);
 
 				// y part
-				A1_error(curRow + 1, vIndices[0] * 2		) = H(1, 0);
-				A1_error(curRow + 1, vIndices[0] * 2 + 1	) = H(1, 1);
-				A1_error(curRow + 1, vIndices[1] * 2		) = H(1, 2);
-				A1_error(curRow + 1, vIndices[1] * 2 + 1	) = H(1, 3);
-				A1_error(curRow + 1, vIndices[2] * 2		) = H(1, 4);
-				A1_error(curRow + 1, vIndices[2] * 2 + 1	) = H(1, 5);
-				A1_error(curRow + 1, vIndices[3] * 2		) = H(1, 6);
-				A1_error(curRow + 1, vIndices[3] * 2 + 1	) = H(1, 7);
+				A1_error(curRow + 1, vIndices[0] * 2) = H(1, 0);
+				A1_error(curRow + 1, vIndices[0] * 2 + 1) = H(1, 1);
+				A1_error(curRow + 1, vIndices[1] * 2) = H(1, 2);
+				A1_error(curRow + 1, vIndices[1] * 2 + 1) = H(1, 3);
+				A1_error(curRow + 1, vIndices[2] * 2) = H(1, 4);
+				A1_error(curRow + 1, vIndices[2] * 2 + 1) = H(1, 5);
+				A1_error(curRow + 1, vIndices[3] * 2) = H(1, 6);
+				A1_error(curRow + 1, vIndices[3] * 2 + 1) = H(1, 7);
 			}
 			else {  // If only one edge nearby
 
@@ -223,20 +286,20 @@ void ARAP::registration_similarity(const std::vector<float>& vertices, const std
 				H(1, 1) += -1;	H(1, 3) += 1;
 
 				// x part
-				A1_error(curRow, vIndices[0] * 2		) = H(0, 0);
-				A1_error(curRow, vIndices[0] * 2 + 1	) = H(0, 1);
-				A1_error(curRow, vIndices[1] * 2		) = H(0, 2);
-				A1_error(curRow, vIndices[1] * 2 + 1	) = H(0, 3);
-				A1_error(curRow, vIndices[2] * 2		) = H(0, 4);
-				A1_error(curRow, vIndices[2] * 2 + 1	) = H(0, 5);
+				A1_error(curRow, vIndices[0] * 2) = H(0, 0);
+				A1_error(curRow, vIndices[0] * 2 + 1) = H(0, 1);
+				A1_error(curRow, vIndices[1] * 2) = H(0, 2);
+				A1_error(curRow, vIndices[1] * 2 + 1) = H(0, 3);
+				A1_error(curRow, vIndices[2] * 2) = H(0, 4);
+				A1_error(curRow, vIndices[2] * 2 + 1) = H(0, 5);
 
 				// y part
-				A1_error(curRow + 1, vIndices[0] * 2		) = H(1, 0);
-				A1_error(curRow + 1, vIndices[0] * 2 + 1	) = H(1, 1);
-				A1_error(curRow + 1, vIndices[1] * 2		) = H(1, 2);
-				A1_error(curRow + 1, vIndices[1] * 2 + 1	) = H(1, 3);
-				A1_error(curRow + 1, vIndices[2] * 2		) = H(1, 4);
-				A1_error(curRow + 1, vIndices[2] * 2 + 1	) = H(1, 5);
+				A1_error(curRow + 1, vIndices[0] * 2) = H(1, 0);
+				A1_error(curRow + 1, vIndices[0] * 2 + 1) = H(1, 1);
+				A1_error(curRow + 1, vIndices[1] * 2) = H(1, 2);
+				A1_error(curRow + 1, vIndices[1] * 2 + 1) = H(1, 3);
+				A1_error(curRow + 1, vIndices[2] * 2) = H(1, 4);
+				A1_error(curRow + 1, vIndices[2] * 2 + 1) = H(1, 5);
 			}
 
 			curRow += 2;
@@ -261,31 +324,230 @@ void ARAP::registration_similarity(const std::vector<float>& vertices, const std
 	std::cout << A1_error * v << std::endl;
 }
 
-/*
-	Min ||v' - v||
-	Add constraints for select vetices.
-*/
-void ARAP::compilation(const std::unordered_set<unsigned int> vSelected)
+void ARAP::registration_similarity_scale(const std::vector<float>& vertices, const std::vector<unsigned int>& indices)
 {
-	A1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, A1_error.cols());
-	b1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, 1);
+	int row = indices.size() * 2, col = vertices.size() / 3 * 2;
 
-	int curRow = 0;
-	w = 100.f;  // w increases, constraints increases.
-	for (auto iter = vSelected.begin(); iter != vSelected.end(); iter++) {
-		int index = *iter;
-		A1_constraint(curRow, index * 2) = w;
-		A1_constraint(curRow + 1, index * 2 + 1) = w;
-		curRow += 2;
+	A1_error = Eigen::MatrixXf::Zero(row, col);
+	b1_error = Eigen::MatrixXf::Zero(row, 1);
 
-		//printf("choose index: %d\n", index);
+	for (int i = 0; i < indices.size(); i += 3) {
+		for (int j = i; j < i + 3; j++) {
+			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
+
+			edgeTableForTriangleIndex[std::make_pair(vStart, vEnd)].push_back(i / 3);
+			edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)].push_back(i / 3);
+		}
 	}
 
-	//printf("A1_constraint:\n");
-	//std::cout << A1_constraint << std::endl;
+	int curRow = 0;
+	for (int i = 0; i < indices.size(); i += 3) {
+		for (int j = i; j < i + 3; j++) {
+			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
+
+			// Find other two edges near edge (vj - vi), denoted as ek
+			if (edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)].size() > 1) {
+				int vIndices[4] = { 0 };  // vi, vj, vl, vr;
+				vIndices[0] = vStart;
+				vIndices[1] = vEnd;
+
+				for (int k = 0; k < 2; k++) {
+					int triangleIndex = edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)][k];
+
+					for (int t = 0; t < 3; t++) {
+						int vIndex = indices[triangleIndex * 3 + t];
+						if (vIndex != vStart && vIndex != vEnd) {
+							vIndices[k + 2] = vIndex;
+						}
+					}
+				}
+
+				float vx[4] = { 0. }, vy[4] = { 0. };
+
+				vx[0] = vertices[vIndices[0] * 3];	vy[0] = vertices[vIndices[0] * 3 + 1];
+				vx[1] = vertices[vIndices[1] * 3];	vy[1] = vertices[vIndices[1] * 3 + 1];
+				vx[2] = vertices[vIndices[2] * 3];	vy[2] = vertices[vIndices[2] * 3 + 1];
+				vx[3] = vertices[vIndices[3] * 3];	vy[3] = vertices[vIndices[3] * 3 + 1];
+
+				/*
+				This part of the paper is wrong(maybe).
+				I recalculate this part myself, using {ck, sk} = G * {ej, el, er}
+				*/
+
+				Eigen::MatrixXf Gk = Eigen::MatrixXf::Zero(6, 2);
+
+				Gk(0, 0) = vx[1] - vx[0];	Gk(0, 1) = vy[1] - vy[0];
+				Gk(1, 0) = vy[1] - vy[0];	Gk(2, 1) = -(vx[1] - vx[0]);
+				Gk(2, 0) = vx[2] - vx[0];	Gk(2, 1) = vy[2] - vy[0];
+				Gk(3, 0) = vy[2] - vy[0];	Gk(3, 1) = -(vx[2] - vx[0]);
+				Gk(4, 0) = vx[3] - vx[0];	Gk(4, 1) = vy[3] - vy[0];
+				Gk(5, 0) = vy[3] - vy[0];	Gk(5, 1) = -(vx[3] - vx[0]);
+
+				// Size of G is (2, 6)
+				Eigen::MatrixXf G = (Gk.transpose() * Gk).completeOrthogonalDecomposition().pseudoInverse() * Gk.transpose();
+
+				/*
+					Here, we come back to the paper.
+					{ck, sk} = G * {ej, el, er} ==> {ck, sk} = H * {vi, vj, vl, vr}
+				*/
+
+				Eigen::MatrixXf H = Eigen::MatrixXf::Zero(2, 8);
+
+				H(0, 0) = -(G(0, 0) + G(0, 2) + G(0, 4));
+				H(0, 1) = -(G(0, 1) + G(0, 3) + G(0, 5));
+				H(0, 2) = G(0, 0);
+				H(0, 3) = G(0, 1);
+				H(0, 4) = G(0, 2);
+				H(0, 5) = G(0, 3);
+				H(0, 6) = G(0, 4);
+				H(0, 7) = G(0, 5);
+
+				H(1, 0) = -(G(1, 0) + G(1, 2) + G(1, 4));
+				H(1, 1) = -(G(1, 1) + G(1, 3) + G(1, 5));
+				H(1, 2) = G(1, 0);
+				H(1, 3) = G(1, 1);
+				H(1, 4) = G(1, 2);
+				H(1, 5) = G(1, 3);
+				H(1, 6) = G(1, 4);
+				H(1, 7) = G(1, 5);
+
+				G_all.push_back(H);
+
+				Eigen::MatrixXf t = Eigen::MatrixXf::Zero(2, 2);
+				t(0, 0) = vx[1] - vx[0];	t(0, 1) = vy[1] - vy[0];
+				t(1, 0) = vy[1] - vy[0];	t(1, 1) = -(vx[1] - vx[0]);
+
+				H = -t * H;
+
+				H(0, 0) += -1;	H(0, 2) += 1;
+				H(1, 1) += -1;	H(1, 3) += 1;
+
+				// x part
+				A1_error(curRow, vIndices[0] * 2) = H(0, 0);
+				A1_error(curRow, vIndices[0] * 2 + 1) = H(0, 1);
+				A1_error(curRow, vIndices[1] * 2) = H(0, 2);
+				A1_error(curRow, vIndices[1] * 2 + 1) = H(0, 3);
+				A1_error(curRow, vIndices[2] * 2) = H(0, 4);
+				A1_error(curRow, vIndices[2] * 2 + 1) = H(0, 5);
+				A1_error(curRow, vIndices[3] * 2) = H(0, 6);
+				A1_error(curRow, vIndices[3] * 2 + 1) = H(0, 7);
+
+				// y part
+				A1_error(curRow + 1, vIndices[0] * 2) = H(1, 0);
+				A1_error(curRow + 1, vIndices[0] * 2 + 1) = H(1, 1);
+				A1_error(curRow + 1, vIndices[1] * 2) = H(1, 2);
+				A1_error(curRow + 1, vIndices[1] * 2 + 1) = H(1, 3);
+				A1_error(curRow + 1, vIndices[2] * 2) = H(1, 4);
+				A1_error(curRow + 1, vIndices[2] * 2 + 1) = H(1, 5);
+				A1_error(curRow + 1, vIndices[3] * 2) = H(1, 6);
+				A1_error(curRow + 1, vIndices[3] * 2 + 1) = H(1, 7);
+			}
+			else {  // If only one edge nearby
+
+				int vIndices[3] = { 0 };  // vi, vj, vl;
+				vIndices[0] = vStart;
+				vIndices[1] = vEnd;
+
+				int triangleIndex = edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)][0];
+
+				for (int t = 0; t < 3; t++) {
+					int vIndex = indices[triangleIndex * 3 + t];
+					if (vIndex != vStart && vIndex != vEnd) {
+						vIndices[2] = vIndex;
+					}
+				}
+
+				float vx[3] = { 0. }, vy[3] = { 0. };
+
+				vx[0] = vertices[vIndices[0] * 3];	vy[0] = vertices[vIndices[0] * 3 + 1];
+				vx[1] = vertices[vIndices[1] * 3];	vy[1] = vertices[vIndices[1] * 3 + 1];
+				vx[2] = vertices[vIndices[2] * 3];	vy[2] = vertices[vIndices[2] * 3 + 1];
+
+				Eigen::MatrixXf Gk = Eigen::MatrixXf::Zero(4, 2);
+
+				Gk(0, 0) = vx[1] - vx[0];	Gk(0, 1) = vy[1] - vy[0];
+				Gk(1, 0) = vy[1] - vy[0];	Gk(2, 1) = -(vx[1] - vx[0]);
+				Gk(2, 0) = vx[2] - vx[0];	Gk(2, 1) = vy[2] - vy[0];
+				Gk(3, 0) = vy[2] - vy[0];	Gk(3, 1) = -(vx[2] - vx[0]);
+
+				Eigen::MatrixXf G = (Gk.transpose() * Gk).completeOrthogonalDecomposition().pseudoInverse() * Gk.transpose();  // Size of G is (2, 4)
+
+				Eigen::MatrixXf H = Eigen::MatrixXf::Zero(2, 6);
+
+				// x part
+				H(0, 0) = -(G(0, 0) + G(0, 2));
+				H(0, 1) = -(G(0, 1) + G(0, 3));
+				H(0, 2) = G(0, 0);
+				H(0, 3) = G(0, 1);
+				H(0, 4) = G(0, 2);
+				H(0, 5) = G(0, 3);
+
+				// y part
+				H(1, 0) = -(G(1, 0) + G(1, 2));
+				H(1, 1) = -(G(1, 1) + G(1, 3));
+				H(1, 2) = G(1, 0);
+				H(1, 3) = G(1, 1);
+				H(1, 4) = G(1, 2);
+				H(1, 5) = G(1, 3);
+
+				G_all.push_back(H);
+
+				Eigen::MatrixXf t = Eigen::MatrixXf::Zero(2, 2);
+				t(0, 0) = vx[1] - vx[0];	t(0, 1) = vy[1] - vy[0];
+				t(1, 0) = vy[1] - vy[0];	t(1, 1) = -(vx[1] - vx[0]);
+
+				H = -t * H;
+
+				H(0, 0) += -1;	H(0, 2) += 1;
+				H(1, 1) += -1;	H(1, 3) += 1;
+
+				// x part
+				A1_error(curRow, vIndices[0] * 2) = H(0, 0);
+				A1_error(curRow, vIndices[0] * 2 + 1) = H(0, 1);
+				A1_error(curRow, vIndices[1] * 2) = H(0, 2);
+				A1_error(curRow, vIndices[1] * 2 + 1) = H(0, 3);
+				A1_error(curRow, vIndices[2] * 2) = H(0, 4);
+				A1_error(curRow, vIndices[2] * 2 + 1) = H(0, 5);
+
+				// y part
+				A1_error(curRow + 1, vIndices[0] * 2) = H(1, 0);
+				A1_error(curRow + 1, vIndices[0] * 2 + 1) = H(1, 1);
+				A1_error(curRow + 1, vIndices[1] * 2) = H(1, 2);
+				A1_error(curRow + 1, vIndices[1] * 2 + 1) = H(1, 3);
+				A1_error(curRow + 1, vIndices[2] * 2) = H(1, 4);
+				A1_error(curRow + 1, vIndices[2] * 2 + 1) = H(1, 5);
+			}
+
+			curRow += 2;
+		}
+	}
+
+	row = indices.size() * 2, col = vertices.size() / 3 * 2;
+
+	A2_error = Eigen::MatrixXf::Zero(row, col);
+	b2_error = Eigen::MatrixXf::Zero(row, 1);
+
+	curRow = 0;
+	for (int i = 0; i < indices.size(); i += 3) {
+		for (int j = i; j < i + 3; j++) {
+			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
+
+			// x part
+			A2_error(curRow, vStart * 2) = -1;
+			A2_error(curRow, vEnd * 2) = 1;
+			b2_error(curRow, 0) = vertices[vEnd * 3] - vertices[vStart * 3];
+
+			// y part
+			A2_error(curRow + 1, vStart * 2 + 1) = -1;
+			A2_error(curRow + 1, vEnd * 2 + 1) = 1;
+			b2_error(curRow + 1, 0) = vertices[vEnd * 3 + 1] - vertices[vStart * 3 + 1];
+
+			curRow += 2;
+		}
+	}
 }
 
-void ARAP::solve(std::vector<float>& vertices, const std::unordered_set<unsigned int> vSelected)
+void ARAP::solve_base(std::vector<float>& vertices, const std::unordered_set<unsigned int> vSelected)
 {
 	// Update constraint vertices
 	int curRow = 0;
@@ -304,7 +566,7 @@ void ARAP::solve(std::vector<float>& vertices, const std::unordered_set<unsigned
 
 	Eigen::MatrixXf b(b1_error.rows() + b1_constraint.rows(), b1_error.cols());
 	b << b1_error, b1_constraint;
-	
+
 	//printf("b:\n");
 	//std::cout << b << std::endl;
 
@@ -321,4 +583,186 @@ void ARAP::solve(std::vector<float>& vertices, const std::unordered_set<unsigned
 	}
 
 	return;
+}
+
+void ARAP::solve_similarity(std::vector<float>& vertices, const std::unordered_set<unsigned int> vSelected)
+{
+	// Update constraint vertices
+	int curRow = 0;
+	for (auto iter = vSelected.begin(); iter != vSelected.end(); iter++) {
+		int index = *iter;
+		b1_constraint(curRow, 0) = w * vertices[index * 3];
+		b1_constraint(curRow + 1, 0) = w * vertices[index * 3 + 1];
+		curRow += 2;
+	}
+
+	Eigen::MatrixXf A(A1_error.rows() + A1_constraint.rows(), A1_error.cols());
+	A << A1_error, A1_constraint;
+
+	Eigen::MatrixXf b(b1_error.rows() + b1_constraint.rows(), b1_error.cols());
+	b << b1_error, b1_constraint;
+
+	Eigen::MatrixXf pinv = (A.transpose() * A).completeOrthogonalDecomposition().pseudoInverse();
+	Eigen::MatrixXf v = pinv * A.transpose() * b;
+
+	for (int i = 0; i < v.rows(); i += 2) {
+		vertices[i / 2 * 3] = v(i, 0);
+		vertices[i / 2 * 3 + 1] = v(i + 1, 0);
+	}
+
+	return;
+}
+
+void ARAP::solve_similarity_scale(std::vector<float>& vertices,
+	const std::vector<unsigned int>& indices, const std::unordered_set<unsigned int> vSelected)
+{
+	// Update constraint vertices
+	int curRow = 0;
+	for (auto iter = vSelected.begin(); iter != vSelected.end(); iter++) {
+		int index = *iter;
+		b1_constraint(curRow, 0) = w * vertices[index * 3];
+		b1_constraint(curRow + 1, 0) = w * vertices[index * 3 + 1];
+		curRow += 2;
+	}
+
+	/*
+		First equation, for solving Tk(including scaling).
+	*/
+
+	Eigen::MatrixXf A1(A1_error.rows() + A1_constraint.rows(), A1_error.cols());
+	A1 << A1_error, A1_constraint;
+
+	Eigen::MatrixXf b1(b1_error.rows() + b1_constraint.rows(), b1_error.cols());
+	b1 << b1_error, b1_constraint;
+
+	// Eigen::MatrixXf pinv = (A1.transpose() * A1).completeOrthogonalDecomposition().pseudoInverse();
+	Eigen::MatrixXf v1 = (A1.transpose() * A1).ldlt().solve(A1.transpose() * b1);
+
+	if (test) {
+		for (int i = 0; i < v1.rows(); i += 2) {
+			vertices[i / 2 * 3] = v1(i, 0);
+			vertices[i / 2 * 3 + 1] = v1(i + 1, 0);
+		}
+
+		return;
+	}
+
+	/*
+		Second equation, final vertics.
+	*/
+
+	Eigen::MatrixXf b2_error_transformed(b2_error);
+
+	// Normalize Tk to remove scaling, then apply it to ek.
+
+	curRow = 0;
+	for (int i = 0; i < indices.size(); i += 3) {
+		for (int j = i; j < i + 3; j++) {
+
+			/*
+				Calculating Tk.
+			*/
+
+			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
+
+			// Find other two edges near edge (vj - vi), denoted as ek
+			if (edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)].size() > 1) {
+				int vIndices[4] = { 0 };  // vi, vj, vl, vr;
+				vIndices[0] = vStart;
+				vIndices[1] = vEnd;
+
+				for (int k = 0; k < 2; k++) {
+					int triangleIndex = edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)][k];
+
+					for (int t = 0; t < 3; t++) {
+						int vIndex = indices[triangleIndex * 3 + t];
+						if (vIndex != vStart && vIndex != vEnd) {
+							vIndices[k + 2] = vIndex;
+							break;
+						}
+					}
+				}
+
+				float vx[4] = { 0. }, vy[4] = { 0. };
+
+				vx[0] = v1(vIndices[0] * 2, 0);		vy[0] = v1(vIndices[0] * 2 + 1, 0);
+				vx[1] = v1(vIndices[1] * 2, 0);		vy[1] =	v1(vIndices[1] * 2 + 1, 0);
+				vx[2] = v1(vIndices[2] * 2, 0);		vy[2] =	v1(vIndices[2] * 2 + 1, 0);
+				vx[3] = v1(vIndices[3] * 2, 0);		vy[3] =	v1(vIndices[3] * 2 + 1, 0);
+
+				Eigen::MatrixXf v(8, 1);
+				v << vx[0], vy[0], vx[1], vy[1], vx[2], vy[2], vx[3], vy[3];
+
+				Eigen::MatrixXf t = G_all[curRow / 2] * v;  // {ck, sk}
+				float ck = t(0, 0), sk = t(1, 0);
+
+				// Normalize it.
+				ck /= std::sqrt(ck * ck + sk * sk);
+				sk /= std::sqrt(ck * ck + sk * sk);
+
+				/*
+					Apply Tk to ek.
+				*/
+
+				float ekx = b2_error(curRow, 0);
+				float eky = b2_error(curRow + 1, 0);
+
+				b2_error_transformed(curRow, 0) = ck * ekx + sk * eky;
+				b2_error_transformed(curRow + 1, 0) = -sk * ekx + ck * eky;
+			}
+			else {  // If only one edge nearby
+
+				int vIndices[3] = { 0 };  // vi, vj, vl;
+				vIndices[0] = vStart;
+				vIndices[1] = vEnd;
+
+				int triangleIndex = edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)][0];
+
+				for (int t = 0; t < 3; t++) {
+					int vIndex = indices[triangleIndex * 3 + t];
+					if (vIndex != vStart && vIndex != vEnd) {
+						vIndices[2] = vIndex;
+					}
+				}
+
+				float vx[3] = { 0. }, vy[3] = { 0. };
+
+				vx[0] = v1(vIndices[0] * 2, 0);		vy[0] = v1(vIndices[0] * 2 + 1, 0);
+				vx[1] = v1(vIndices[1] * 2, 0);		vy[1] = v1(vIndices[1] * 2 + 1, 0);
+				vx[2] = v1(vIndices[2] * 2, 0);		vy[2] = v1(vIndices[2] * 2 + 1, 0);
+
+				Eigen::MatrixXf v(6, 1);
+				v << vx[0], vy[0], vx[1], vy[1], vx[2], vy[2];
+
+				Eigen::MatrixXf t = G_all[curRow / 2] * v;  // {ck, sk}
+				float ck = t(0, 0), sk = t(1, 0);
+
+				ck /= std::sqrt(ck * ck + sk * sk);
+				sk /= std::sqrt(ck * ck + sk * sk);
+
+				float ekx = b2_error(curRow, 0);
+				float eky = b2_error(curRow + 1, 0);
+
+				b2_error_transformed(curRow, 0) = ck * ekx + sk * eky;
+				b2_error_transformed(curRow + 1, 0) = -sk * ekx + ck * eky;
+			}
+
+			curRow += 2;
+		}
+	}
+
+	Eigen::MatrixXf A2(A2_error.rows() + A1_constraint.rows(), A2_error.cols());
+	A2 << A2_error, A1_constraint;
+
+	Eigen::MatrixXf b2(b2_error_transformed.rows() + b1_constraint.rows(), b2_error.cols());
+	b2 << b2_error_transformed, b1_constraint;
+
+	//pinv = (A2.transpose() * A2).completeOrthogonalDecomposition().pseudoInverse();
+	Eigen::MatrixXf v2 = (A2.transpose() * A2).ldlt().solve(A2.transpose() * b2);
+	//Eigen::MatrixXf v2 = pinv * A2.transpose() * b2;
+
+	for (int i = 0; i < v2.rows(); i += 2) {
+		vertices[i / 2 * 3] = v2(i, 0);
+		vertices[i / 2 * 3 + 1] = v2(i + 1, 0);
+	}
 }

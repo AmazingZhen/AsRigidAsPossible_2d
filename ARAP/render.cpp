@@ -137,7 +137,7 @@ void Render::selectVertex(float x, float y)
 		}
 
 		solver.compilation(vSelected);
-		solver.solve(vertices, vSelected);
+		solver.solve(vertices, indices, vSelected);
 	}
 }
 
@@ -149,7 +149,7 @@ void Render::moveVertexSelected(float x, float y)
 		vertices[minDistIndex * 3] = x;
 		vertices[minDistIndex * 3 + 1] = y;
 
-		solver.solve(vertices, vSelected);
+		solver.solve(vertices, indices, vSelected);
 	}
 
 }
@@ -159,7 +159,7 @@ void Render::generateSquareMesh()
 	vertices.clear();
 	indices.clear();
 
-	const unsigned int nRowLen = 4;
+	const unsigned int nRowLen = 6;
 
 	float fYStep = 2.0f / (float)(nRowLen - 1);
 	float fXStep = 2.0f / (float)(nRowLen - 1);
@@ -302,7 +302,7 @@ int Render::findClosestVertexIndex(float x, float y)
 		}
 	}
 
-	if (minDist < 0.01) {
+	if (minDist < 0.1) {
 		return minDistIndex;
 	}
 
