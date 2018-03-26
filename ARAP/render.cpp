@@ -144,6 +144,7 @@ void Render::selectVertex(float x, float y)
 void Render::moveVertexSelected(float x, float y)
 {
 	int minDistIndex = findClosestVertexIndex(x, y);
+	// printf("selected : %d\n", minDistIndex);
 
 	if (vSelected.find(minDistIndex) != vSelected.end()) {
 		vertices[minDistIndex * 3] = x;

@@ -2,11 +2,11 @@
 
 #include <iostream>
 
-ARAP::ARAP() : mode(similarity_scale)
+ARAP::ARAP() :
+	mode(similarity_scale),
+	w(1000.f)  // w increases, constraints increases.
 {
 }
-
-bool test = false;
 
 void ARAP::registration(const std::vector<float>& vertices, const std::vector<unsigned int>& indices)
 {
@@ -28,30 +28,23 @@ void ARAP::registration(const std::vector<float>& vertices, const std::vector<un
 }
 
 /*
-	Min ||v' - v||
 	Add constraints for select vetices.
 */
-void ARAP::compilation(const std::unordered_set<unsigned int> vSelected)
+void ARAP::compilation(const std::set<unsigned int> vSelected)
 {
 	A1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, A1_error.cols());
-	b1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, 1);
 
 	int curRow = 0;
-	w = 100.f;  // w increases, constraints increases.
 	for (auto iter = vSelected.begin(); iter != vSelected.end(); iter++) {
 		int index = *iter;
 		A1_constraint(curRow, index * 2) = w;
 		A1_constraint(curRow + 1, index * 2 + 1) = w;
 		curRow += 2;
 
-		//printf("choose index: %d\n", index);
 	}
-
-	//printf("A1_constraint:\n");
-	//std::cout << A1_constraint << std::endl;
 }
 
-void ARAP::solve(std::vector<float>& vertices, const std::vector<unsigned int>& indices, const std::unordered_set<unsigned int> vSelected)
+void ARAP::solve(std::vector<float>& vertices, const std::vector<unsigned int>& indices, const std::set<unsigned int> vSelected)
 {
 	if (vSelected.size() == 0) {
 		return;
@@ -326,7 +319,9 @@ void ARAP::registration_similarity(const std::vector<float>& vertices, const std
 
 void ARAP::registration_similarity_scale(const std::vector<float>& vertices, const std::vector<unsigned int>& indices)
 {
-	int row = indices.size() * 2, col = vertices.size() / 3 * 2;
+	//int row = indices.size() * 2, col = vertices.size() / 3 * 2;
+	int row = (vertices.size() / 3 + indices.size() / 3 - 1) * 2;  // Euler's formula, e = v + f - 2
+	int col = vertices.size() / 3 * 2;
 
 	A1_error = Eigen::MatrixXf::Zero(row, col);
 	b1_error = Eigen::MatrixXf::Zero(row, 1);
@@ -340,10 +335,18 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 		}
 	}
 
+	std::vector<std::vector<bool>> edgeUsed(vertices.size(), std::vector<bool>(vertices.size(), false));
+
 	int curRow = 0;
 	for (int i = 0; i < indices.size(); i += 3) {
 		for (int j = i; j < i + 3; j++) {
 			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
+
+			if (edgeUsed[vEnd][vStart] || edgeUsed[vStart][vEnd]) {
+				continue;
+			}
+
+			edgeUsed[vEnd][vStart] = edgeUsed[vStart][vEnd] = true;
 
 			// Find other two edges near edge (vj - vi), denoted as ek
 			if (edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)].size() > 1) {
@@ -522,15 +525,23 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 		}
 	}
 
-	row = indices.size() * 2, col = vertices.size() / 3 * 2;
+	// row = indices.size() * 2, col = vertices.size() / 3 * 2;
 
 	A2_error = Eigen::MatrixXf::Zero(row, col);
 	b2_error = Eigen::MatrixXf::Zero(row, 1);
 
 	curRow = 0;
+	edgeUsed = std::vector<std::vector<bool>>(vertices.size(), std::vector<bool>(vertices.size(), false));
+
 	for (int i = 0; i < indices.size(); i += 3) {
 		for (int j = i; j < i + 3; j++) {
 			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
+
+			if (edgeUsed[vEnd][vStart] || edgeUsed[vStart][vEnd]) {
+				continue;
+			}
+
+			edgeUsed[vEnd][vStart] = edgeUsed[vStart][vEnd] = true;
 
 			// x part
 			A2_error(curRow, vStart * 2) = -1;
@@ -547,7 +558,7 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 	}
 }
 
-void ARAP::solve_base(std::vector<float>& vertices, const std::unordered_set<unsigned int> vSelected)
+void ARAP::solve_base(std::vector<float>& vertices, const std::set<unsigned int> vSelected)
 {
 	// Update constraint vertices
 	int curRow = 0;
@@ -585,7 +596,7 @@ void ARAP::solve_base(std::vector<float>& vertices, const std::unordered_set<uns
 	return;
 }
 
-void ARAP::solve_similarity(std::vector<float>& vertices, const std::unordered_set<unsigned int> vSelected)
+void ARAP::solve_similarity(std::vector<float>& vertices, const std::set<unsigned int> vSelected)
 {
 	// Update constraint vertices
 	int curRow = 0;
@@ -614,16 +625,19 @@ void ARAP::solve_similarity(std::vector<float>& vertices, const std::unordered_s
 }
 
 void ARAP::solve_similarity_scale(std::vector<float>& vertices,
-	const std::vector<unsigned int>& indices, const std::unordered_set<unsigned int> vSelected)
+	const std::vector<unsigned int>& indices, const std::set<unsigned int> vSelected)
 {
 	// Update constraint vertices
+	b1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, 1);
 	int curRow = 0;
 	for (auto iter = vSelected.begin(); iter != vSelected.end(); iter++) {
 		int index = *iter;
+
 		b1_constraint(curRow, 0) = w * vertices[index * 3];
 		b1_constraint(curRow + 1, 0) = w * vertices[index * 3 + 1];
 		curRow += 2;
 	}
+
 
 	/*
 		First equation, for solving Tk(including scaling).
@@ -638,15 +652,6 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 	// Eigen::MatrixXf pinv = (A1.transpose() * A1).completeOrthogonalDecomposition().pseudoInverse();
 	Eigen::MatrixXf v1 = (A1.transpose() * A1).ldlt().solve(A1.transpose() * b1);
 
-	if (test) {
-		for (int i = 0; i < v1.rows(); i += 2) {
-			vertices[i / 2 * 3] = v1(i, 0);
-			vertices[i / 2 * 3 + 1] = v1(i + 1, 0);
-		}
-
-		return;
-	}
-
 	/*
 		Second equation, final vertics.
 	*/
@@ -656,6 +661,9 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 	// Normalize Tk to remove scaling, then apply it to ek.
 
 	curRow = 0;
+
+	std::vector<std::vector<bool>> edgeUsed(vertices.size(), std::vector<bool>(vertices.size(), false));
+
 	for (int i = 0; i < indices.size(); i += 3) {
 		for (int j = i; j < i + 3; j++) {
 
@@ -664,6 +672,12 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 			*/
 
 			int vStart = indices[j], vEnd = indices[(j + 1 == i + 3 ? i : j + 1)];
+
+			if (edgeUsed[vEnd][vStart] || edgeUsed[vStart][vEnd]) {
+				continue;
+			}
+
+			edgeUsed[vEnd][vStart] = edgeUsed[vStart][vEnd] = true;
 
 			// Find other two edges near edge (vj - vi), denoted as ek
 			if (edgeTableForTriangleIndex[std::make_pair(vEnd, vStart)].size() > 1) {

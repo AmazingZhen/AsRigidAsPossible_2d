@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 #include <vector>
-#include <unordered_set>
+#include <set>
 
 #include "GL/glew.h"
 #include "GLFW/glfw3.h"
@@ -33,7 +33,7 @@ class Render {
 		std::vector<float> vertices;  // {x, y ,z, ..., x, y, z}
 		std::vector<unsigned int> indices;
 
-		std::unordered_set<unsigned int> vSelected;
+		std::set<unsigned int> vSelected;
 
 		ARAP solver;
 };

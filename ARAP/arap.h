@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include <unordered_set>
+#include <set>
 #include <map>
 
 #include <Eigen/Dense>
@@ -15,9 +15,9 @@ public:
 	void registration(const std::vector<float> &vertices,
 		const std::vector<unsigned int> &indices);
 
-	void compilation(const std::unordered_set<unsigned int> vSelected);
+	void compilation(const std::set<unsigned int> vSelected);
 
-	void solve(std::vector<float> &vertices, const std::vector<unsigned int>& indices, const std::unordered_set<unsigned int> vSelected);
+	void solve(std::vector<float> &vertices, const std::vector<unsigned int>& indices, const std::set<unsigned int> vSelected);
 
 private:
 	void registration_base(const std::vector<float>& vertices, const std::vector<unsigned int>& indices);
@@ -26,13 +26,13 @@ private:
 
 	void registration_similarity_scale(const std::vector<float>& vertices, const std::vector<unsigned int>& indices);
 
-	void solve_base(std::vector<float> &vertices, const std::unordered_set<unsigned int> vSelected);
+	void solve_base(std::vector<float> &vertices, const std::set<unsigned int> vSelected);
 
-	void solve_similarity(std::vector<float> &vertices, const std::unordered_set<unsigned int> vSelected);
+	void solve_similarity(std::vector<float> &vertices, const std::set<unsigned int> vSelected);
 
 	void solve_similarity_scale(std::vector<float> &vertices,
 		const std::vector<unsigned int>& indices,
-		const std::unordered_set<unsigned int> vSelected);
+		const std::set<unsigned int> vSelected);
 
 	Solver_mode mode;
 
