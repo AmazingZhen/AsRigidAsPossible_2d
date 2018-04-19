@@ -1,10 +1,12 @@
 #include "render.h"
 
 GLuint vbo, ebo;
-float gWidth = 600, gHeight = 600;
+float gWidth = 1000, gHeight = 1000;
 float gScale = 1.0f;
 float gX, gY;
 bool gLeftButtonPressed = false;
+
+const unsigned int nRowLen = 21;
 
 Render *r = 0;
 
@@ -20,11 +22,18 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 	gScale += yoffset / 10.f ;
 }
 
+int selectIndex = -1;
+
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
 	if (action == GLFW_PRESS) {
 		if (button == GLFW_MOUSE_BUTTON_LEFT) {
 			gLeftButtonPressed = true;
+
+			float world_x = (float((gX - gWidth / 2) / gWidth) * 2) / gScale;
+			float world_y = (float(-(gY - gHeight / 2) / gHeight) * 2) / gScale;
+
+			selectIndex = r->findClosestVertexIndex(world_x, world_y);
 		}
 		else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
 			float world_x = (float((gX - gWidth / 2) / gWidth) * 2) / gScale;
@@ -143,12 +152,12 @@ void Render::selectVertex(float x, float y)
 
 void Render::moveVertexSelected(float x, float y)
 {
-	int minDistIndex = findClosestVertexIndex(x, y);
+	// int minDistIndex = findClosestVertexIndex(x, y);
 	// printf("selected : %d\n", minDistIndex);
 
-	if (vSelected.find(minDistIndex) != vSelected.end()) {
-		vertices[minDistIndex * 3] = x;
-		vertices[minDistIndex * 3 + 1] = y;
+	if (vSelected.find(selectIndex) != vSelected.end()) {
+		vertices[selectIndex * 3] = x;
+		vertices[selectIndex * 3 + 1] = y;
 
 		solver.solve(vertices, indices, vSelected);
 	}
@@ -159,8 +168,6 @@ void Render::generateSquareMesh()
 {
 	vertices.clear();
 	indices.clear();
-
-	const unsigned int nRowLen = 6;
 
 	float fYStep = 2.0f / (float)(nRowLen - 1);
 	float fXStep = 2.0f / (float)(nRowLen - 1);
@@ -176,6 +183,8 @@ void Render::generateSquareMesh()
 			vertices.push_back(v[2]);
 		}
 	}
+
+	printf("num of v: %d\n", vertices.size() / 3);
 
 	originalVertices = vertices;
 

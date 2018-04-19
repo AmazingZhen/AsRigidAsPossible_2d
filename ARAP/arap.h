@@ -47,7 +47,20 @@ private:
 	Eigen::MatrixXf A2_error;
 	Eigen::MatrixXf b2_error;
 
+	Eigen::MatrixXf A1;
+	Eigen::MatrixXf A2;
+
+	Eigen::MatrixXf b1;
+	Eigen::MatrixXf b2;
+	Eigen::MatrixXf b2_error_transformed;
+
+	Eigen::LLT<Eigen::MatrixXf> A1T_A1_LLT;
+	Eigen::LLT<Eigen::MatrixXf> A2T_A2_LLT;
+
+	Eigen::MatrixXf A1_errorT_b1_error;
+
 	float w;
 
+	std::vector<std::vector<bool>> edgeUsed;
 	std::map<std::pair<unsigned int, unsigned int>, std::vector<unsigned int>> edgeTableForTriangleIndex;
 };

@@ -40,8 +40,23 @@ void ARAP::compilation(const std::set<unsigned int> vSelected)
 		A1_constraint(curRow, index * 2) = w;
 		A1_constraint(curRow + 1, index * 2 + 1) = w;
 		curRow += 2;
-
 	}
+
+	b1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, 1);
+
+	A1 = Eigen::MatrixXf(A1_error.rows() + A1_constraint.rows(), A1_error.cols());
+	A1 << A1_error, A1_constraint;
+
+	A2 = Eigen::MatrixXf(A2_error.rows() + A1_constraint.rows(), A2_error.cols());
+	A2 << A2_error, A1_constraint;
+
+	b1 = Eigen::MatrixXf(b1_error.rows() + b1_constraint.rows(), 1);
+	b2 = Eigen::MatrixXf(b2_error.rows() + b1_constraint.rows(), 1);
+
+	A1T_A1_LLT = (A1.transpose() * A1).llt();
+	A2T_A2_LLT = (A2.transpose() * A2).llt();
+
+	// A1T_b1 = Eigen::MatrixXf(A1.cols(), 1);
 }
 
 void ARAP::solve(std::vector<float>& vertices, const std::vector<unsigned int>& indices, const std::set<unsigned int> vSelected)
@@ -335,7 +350,7 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 		}
 	}
 
-	std::vector<std::vector<bool>> edgeUsed(vertices.size(), std::vector<bool>(vertices.size(), false));
+	edgeUsed = std::vector<std::vector<bool>>(vertices.size(), std::vector<bool>(vertices.size(), false));
 
 	int curRow = 0;
 	for (int i = 0; i < indices.size(); i += 3) {
@@ -556,6 +571,10 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 			curRow += 2;
 		}
 	}
+
+	b2_error_transformed = Eigen::MatrixXf(b2_error.rows(), b2_error.cols());
+
+	A1_errorT_b1_error = A1_error.transpose() * b1_error;
 }
 
 void ARAP::solve_base(std::vector<float>& vertices, const std::set<unsigned int> vSelected)
@@ -628,7 +647,6 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 	const std::vector<unsigned int>& indices, const std::set<unsigned int> vSelected)
 {
 	// Update constraint vertices
-	b1_constraint = Eigen::MatrixXf::Zero(vSelected.size() * 2, 1);
 	int curRow = 0;
 	for (auto iter = vSelected.begin(); iter != vSelected.end(); iter++) {
 		int index = *iter;
@@ -638,31 +656,30 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 		curRow += 2;
 	}
 
-
 	/*
 		First equation, for solving Tk(including scaling).
 	*/
-
-	Eigen::MatrixXf A1(A1_error.rows() + A1_constraint.rows(), A1_error.cols());
-	A1 << A1_error, A1_constraint;
-
-	Eigen::MatrixXf b1(b1_error.rows() + b1_constraint.rows(), b1_error.cols());
 	b1 << b1_error, b1_constraint;
 
 	// Eigen::MatrixXf pinv = (A1.transpose() * A1).completeOrthogonalDecomposition().pseudoInverse();
-	Eigen::MatrixXf v1 = (A1.transpose() * A1).ldlt().solve(A1.transpose() * b1);
+	// Eigen::MatrixXf v1 = A1T_A1_LLT.solve(A1.transpose() * b1);
+
+	Eigen::MatrixXf A1T_b1 = A1_errorT_b1_error + A1_constraint.transpose() * b1_constraint;
+	Eigen::MatrixXf v1 = A1T_A1_LLT.solve(A1T_b1);
 
 	/*
 		Second equation, final vertics.
 	*/
 
-	Eigen::MatrixXf b2_error_transformed(b2_error);
-
 	// Normalize Tk to remove scaling, then apply it to ek.
 
 	curRow = 0;
 
-	std::vector<std::vector<bool>> edgeUsed(vertices.size(), std::vector<bool>(vertices.size(), false));
+	for (int i = 0; i < edgeUsed.size(); i++) {
+		for (int j = 0; j < edgeUsed.size(); j++) {
+			edgeUsed[i][j] = false;
+		}
+	}
 
 	for (int i = 0; i < indices.size(); i += 3) {
 		for (int j = i; j < i + 3; j++) {
@@ -765,15 +782,9 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 		}
 	}
 
-	Eigen::MatrixXf A2(A2_error.rows() + A1_constraint.rows(), A2_error.cols());
-	A2 << A2_error, A1_constraint;
-
-	Eigen::MatrixXf b2(b2_error_transformed.rows() + b1_constraint.rows(), b2_error.cols());
 	b2 << b2_error_transformed, b1_constraint;
 
-	//pinv = (A2.transpose() * A2).completeOrthogonalDecomposition().pseudoInverse();
-	Eigen::MatrixXf v2 = (A2.transpose() * A2).ldlt().solve(A2.transpose() * b2);
-	//Eigen::MatrixXf v2 = pinv * A2.transpose() * b2;
+	Eigen::MatrixXf v2 = A2T_A2_LLT.solve(A2.transpose() * b2);
 
 	for (int i = 0; i < v2.rows(); i += 2) {
 		vertices[i / 2 * 3] = v2(i, 0);

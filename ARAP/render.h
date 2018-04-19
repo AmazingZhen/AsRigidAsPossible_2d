@@ -17,14 +17,13 @@ class Render {
 
 		void selectVertex(float x, float y);
 		void moveVertexSelected(float x, float y);
+		int findClosestVertexIndex(float x, float y);
 
 	private:
 		bool init();
 
 		void generateSquareMesh();
 		void render();
-
-		int findClosestVertexIndex(float x, float y);
 
 	private:
 		GLFWwindow* window;
