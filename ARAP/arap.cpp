@@ -53,15 +53,13 @@ void ARAP::compilation(const std::set<unsigned int> vSelected)
 	b1 = Eigen::MatrixXf(b1_error.rows() + b1_constraint.rows(), 1);
 	b2 = Eigen::MatrixXf(b2_error.rows() + b1_constraint.rows(), 1);
 
-	A1T_A1_LLT = (A1.transpose() * A1).llt();
-	A2T_A2_LLT = (A2.transpose() * A2).llt();
-
-	// A1T_b1 = Eigen::MatrixXf(A1.cols(), 1);
+	A1T_A1 = (A1_errorT_A1_error + A1_constraint.transpose() * A1_constraint).ldlt();
+	A2T_A2 = (A2_errorT_A2_error + A1_constraint.transpose() * A1_constraint).ldlt();
 }
 
 void ARAP::solve(std::vector<float>& vertices, const std::vector<unsigned int>& indices, const std::set<unsigned int> vSelected)
 {
-	if (vSelected.size() == 0) {
+	if (vSelected.size() < 2) {
 		return;
 	}
 
@@ -387,6 +385,12 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 				vx[2] = vertices[vIndices[2] * 3];	vy[2] = vertices[vIndices[2] * 3 + 1];
 				vx[3] = vertices[vIndices[3] * 3];	vy[3] = vertices[vIndices[3] * 3 + 1];
 
+				float ex[3] = { 0. }, ey[3] = { 0. };
+
+				ex[0] = vx[1] - vx[0];	ey[0] = vy[1] - vy[0];
+				ex[1] = vx[2] - vx[0];	ey[1] = vy[2] - vy[0];
+				ex[2] = vx[3] - vx[0];	ey[2] = vy[3] - vy[0];
+
 				/*
 				This part of the paper is wrong(maybe).
 				I recalculate this part myself, using {ck, sk} = G * {ej, el, er}
@@ -394,12 +398,12 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 
 				Eigen::MatrixXf Gk = Eigen::MatrixXf::Zero(6, 2);
 
-				Gk(0, 0) = vx[1] - vx[0];	Gk(0, 1) = vy[1] - vy[0];
-				Gk(1, 0) = vy[1] - vy[0];	Gk(2, 1) = -(vx[1] - vx[0]);
-				Gk(2, 0) = vx[2] - vx[0];	Gk(2, 1) = vy[2] - vy[0];
-				Gk(3, 0) = vy[2] - vy[0];	Gk(3, 1) = -(vx[2] - vx[0]);
-				Gk(4, 0) = vx[3] - vx[0];	Gk(4, 1) = vy[3] - vy[0];
-				Gk(5, 0) = vy[3] - vy[0];	Gk(5, 1) = -(vx[3] - vx[0]);
+				Gk <<	ex[0],	ey[0],
+						ey[0], -ex[0],
+						ex[1],	ey[1],
+						ey[1], -ex[1],
+						ex[2],	ey[2],
+						ey[2], -ex[2];
 
 				// Size of G is (2, 6)
 				Eigen::MatrixXf G = (Gk.transpose() * Gk).completeOrthogonalDecomposition().pseudoInverse() * Gk.transpose();
@@ -432,8 +436,8 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 				G_all.push_back(H);
 
 				Eigen::MatrixXf t = Eigen::MatrixXf::Zero(2, 2);
-				t(0, 0) = vx[1] - vx[0];	t(0, 1) = vy[1] - vy[0];
-				t(1, 0) = vy[1] - vy[0];	t(1, 1) = -(vx[1] - vx[0]);
+				t <<	ex[0],	ey[0],
+						ey[0], -ex[0];
 
 				H = -t * H;
 
@@ -481,12 +485,17 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 				vx[1] = vertices[vIndices[1] * 3];	vy[1] = vertices[vIndices[1] * 3 + 1];
 				vx[2] = vertices[vIndices[2] * 3];	vy[2] = vertices[vIndices[2] * 3 + 1];
 
+				float ex[2] = { 0. }, ey[2] = { 0. };
+
+				ex[0] = vx[1] - vx[0];	ey[0] = vy[1] - vy[0];
+				ex[1] = vx[2] - vx[0];	ey[1] = vy[2] - vy[0];
+
 				Eigen::MatrixXf Gk = Eigen::MatrixXf::Zero(4, 2);
 
-				Gk(0, 0) = vx[1] - vx[0];	Gk(0, 1) = vy[1] - vy[0];
-				Gk(1, 0) = vy[1] - vy[0];	Gk(2, 1) = -(vx[1] - vx[0]);
-				Gk(2, 0) = vx[2] - vx[0];	Gk(2, 1) = vy[2] - vy[0];
-				Gk(3, 0) = vy[2] - vy[0];	Gk(3, 1) = -(vx[2] - vx[0]);
+				Gk <<	ex[0],	ey[0],
+						ey[0], -ex[0],
+						ex[1],	ey[1],
+						ey[1], -ex[1];
 
 				Eigen::MatrixXf G = (Gk.transpose() * Gk).completeOrthogonalDecomposition().pseudoInverse() * Gk.transpose();  // Size of G is (2, 4)
 
@@ -573,6 +582,9 @@ void ARAP::registration_similarity_scale(const std::vector<float>& vertices, con
 	}
 
 	b2_error_transformed = Eigen::MatrixXf(b2_error.rows(), b2_error.cols());
+
+	A1_errorT_A1_error = A1_error.transpose() * A1_error;
+	A2_errorT_A2_error = A2_error.transpose() * A2_error;
 
 	A1_errorT_b1_error = A1_error.transpose() * b1_error;
 }
@@ -665,7 +677,7 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 	// Eigen::MatrixXf v1 = A1T_A1_LLT.solve(A1.transpose() * b1);
 
 	Eigen::MatrixXf A1T_b1 = A1_errorT_b1_error + A1_constraint.transpose() * b1_constraint;
-	Eigen::MatrixXf v1 = A1T_A1_LLT.solve(A1T_b1);
+	Eigen::MatrixXf v1 = A1T_A1.solve(A1T_b1);
 
 	/*
 		Second equation, final vertics.
@@ -784,7 +796,7 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 
 	b2 << b2_error_transformed, b1_constraint;
 
-	Eigen::MatrixXf v2 = A2T_A2_LLT.solve(A2.transpose() * b2);
+	Eigen::MatrixXf v2 = A2T_A2.solve(A2.transpose() * b2);
 
 	for (int i = 0; i < v2.rows(); i += 2) {
 		vertices[i / 2 * 3] = v2(i, 0);

@@ -5,6 +5,7 @@
 #include <map>
 
 #include <Eigen/Dense>
+#include <Eigen/SparseLU>
 
 enum Solver_mode { base, similarity, similarity_scale };
 
@@ -54,8 +55,11 @@ private:
 	Eigen::MatrixXf b2;
 	Eigen::MatrixXf b2_error_transformed;
 
-	Eigen::LLT<Eigen::MatrixXf> A1T_A1_LLT;
-	Eigen::LLT<Eigen::MatrixXf> A2T_A2_LLT;
+	Eigen::MatrixXf A1_errorT_A1_error;
+	Eigen::MatrixXf A2_errorT_A2_error;
+
+	Eigen::LDLT<Eigen::MatrixXf> A1T_A1;
+	Eigen::LDLT<Eigen::MatrixXf> A2T_A2;
 
 	Eigen::MatrixXf A1_errorT_b1_error;
 

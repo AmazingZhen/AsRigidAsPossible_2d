@@ -6,7 +6,7 @@ float gScale = 1.0f;
 float gX, gY;
 bool gLeftButtonPressed = false;
 
-const unsigned int nRowLen = 21;
+const unsigned int nRowLen = 6;
 
 Render *r = 0;
 
