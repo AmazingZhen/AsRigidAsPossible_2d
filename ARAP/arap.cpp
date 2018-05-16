@@ -53,8 +53,13 @@ void ARAP::compilation(const std::set<unsigned int> vSelected)
 	b1 = Eigen::MatrixXf(b1_error.rows() + b1_constraint.rows(), 1);
 	b2 = Eigen::MatrixXf(b2_error.rows() + b1_constraint.rows(), 1);
 
+#ifdef ARAP_USE_SPARSE
+	A1T_A1.compute((A1_errorT_A1_error + A1_constraint.transpose() * A1_constraint).sparseView());
+	A2T_A2.compute((A2_errorT_A2_error + A1_constraint.transpose() * A1_constraint).sparseView());
+#else
 	A1T_A1 = (A1_errorT_A1_error + A1_constraint.transpose() * A1_constraint).ldlt();
 	A2T_A2 = (A2_errorT_A2_error + A1_constraint.transpose() * A1_constraint).ldlt();
+#endif
 }
 
 void ARAP::solve(std::vector<float>& vertices, const std::vector<unsigned int>& indices, const std::set<unsigned int> vSelected)
@@ -796,7 +801,8 @@ void ARAP::solve_similarity_scale(std::vector<float>& vertices,
 
 	b2 << b2_error_transformed, b1_constraint;
 
-	Eigen::MatrixXf v2 = A2T_A2.solve(A2.transpose() * b2);
+	Eigen::MatrixXf A2T_b2 = A2.transpose() * b2;
+	Eigen::MatrixXf v2 = A2T_A2.solve(A2T_b2);
 
 	for (int i = 0; i < v2.rows(); i += 2) {
 		vertices[i / 2 * 3] = v2(i, 0);

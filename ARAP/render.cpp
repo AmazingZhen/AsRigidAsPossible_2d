@@ -103,9 +103,14 @@ bool Render::init()
 	glfwSetCursorPosCallback(window, cursor_position_callback);
 
 	r = this;
-	solver = ARAP();
+	arap = new ARAP();
 
 	return true;
+}
+
+Render::~Render()
+{
+	delete arap;
 }
 
 void Render::start()
@@ -116,7 +121,7 @@ void Render::start()
 
 	generateSquareMesh();
 
-	solver.registration(vertices, indices);
+	arap->registration(vertices, indices);
 
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
 
@@ -145,8 +150,8 @@ void Render::selectVertex(float x, float y)
 			vSelected.erase(pos);
 		}
 
-		solver.compilation(vSelected);
-		solver.solve(vertices, indices, vSelected);
+		arap->compilation(vSelected);
+		arap->solve(vertices, indices, vSelected);
 	}
 }
 
@@ -159,7 +164,7 @@ void Render::moveVertexSelected(float x, float y)
 		vertices[selectIndex * 3] = x;
 		vertices[selectIndex * 3 + 1] = y;
 
-		solver.solve(vertices, indices, vSelected);
+		arap->solve(vertices, indices, vSelected);
 	}
 
 }

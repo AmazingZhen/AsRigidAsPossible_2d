@@ -5,7 +5,10 @@
 #include <map>
 
 #include <Eigen/Dense>
-#include <Eigen/SparseLU>
+#include <Eigen/Sparse>
+#ifdef EIGEN_USE_MKL_ALL
+#include <Eigen/PardisoSupport>
+#endif
 
 enum Solver_mode { base, similarity, similarity_scale };
 
@@ -58,8 +61,18 @@ private:
 	Eigen::MatrixXf A1_errorT_A1_error;
 	Eigen::MatrixXf A2_errorT_A2_error;
 
+#ifdef ARAP_USE_EIGEN_SPARSE
+	#ifdef EIGEN_USE_MKL_ALL
+		Eigen::PardisoLDLT<Eigen::SparseMatrix<float>> A1T_A1;
+		Eigen::PardisoLDLT<Eigen::SparseMatrix<float>> A2T_A2;
+	#else
+		Eigen::SimplicialLDLT<Eigen::SparseMatrix<float>> A1T_A1;
+		Eigen::SimplicialLDLT<Eigen::SparseMatrix<float>> A2T_A2;
+	#endif
+#else
 	Eigen::LDLT<Eigen::MatrixXf> A1T_A1;
 	Eigen::LDLT<Eigen::MatrixXf> A2T_A2;
+#endif
 
 	Eigen::MatrixXf A1_errorT_b1_error;
 

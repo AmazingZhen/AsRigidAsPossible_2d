@@ -13,6 +13,7 @@
 
 class Render {
 	public:
+		~Render();
 		void start();
 
 		void selectVertex(float x, float y);
@@ -34,5 +35,5 @@ class Render {
 
 		std::set<unsigned int> vSelected;
 
-		ARAP solver;
+		ARAP *arap;
 };
